@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html class="dark" lang="en" style="">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Battery Monitor Dashboard</title>
+<!-- Tailwind CSS v3 CDN with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Font Awesome for Icons -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          'dashboard-dark': '#0f172a',
+          'sidebar-dark': '#111827',
+          'card-dark': '#1e293b',
+          'accent-blue': '#2563eb',
+          'status-online': '#10b981',
+          'status-offline': '#6b7280',
+          'status-charging': '#3b82f6',
+          'status-discharging': '#f59e0b',
+          'status-alarm-minor': '#f59e0b',
+          'status-alarm-major': '#ef4444',
+        }
+      }
+    }
+  }
+</script>
+<style data-purpose="custom-layout">
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+  /* Battery Visual: Zero inset fill at bottom/left */
+  .battery-visual {
+    position: relative;
+    width: 44px;
+    height: 72px;
+    border: 2px solid #475569;
+    border-radius: 4px;
+    overflow: hidden; 
+    flex-shrink: 0;
+    background-color: rgba(30, 41, 59, 0.5);
+  }
+  @media (min-width: 1024px) {
+    .battery-visual {
+      width: 48px;
+      height: 80px;
+    }
+  }
+  .battery-visual::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 3px;
+    background-color: #475569;
+    border-radius: 0 0 2px 2px;
+    z-index: 10;
+  }
+  .battery-fill {
+    width: 100%;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    transition: height 0.3s ease;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #0f172a;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 10px;
+  }
+</style>
+</head>
+<body class="h-screen flex flex-col md:flex-row overflow-hidden">
+<!-- BEGIN: Desktop Sidebar Navigation (Hidden on Mobile) -->
+<aside class="hidden md:flex w-64 bg-[#111827] border-r border-slate-800 flex-col shrink-0" data-purpose="sidebar-navigation">
+  <div class="p-6 flex items-center gap-3">
+    <div class="bg-blue-600 p-2 rounded-lg">
+      <i class="fas fa-battery-full text-white text-xl"></i>
+    </div>
+    <h1 class="text-lg font-bold leading-tight">Battery Monitor</h1>
+  </div>
+  <nav class="flex-1 px-4 py-4 space-y-2">
+    <a class="flex items-center gap-3 px-4 py-3 bg-blue-600 text-white rounded-lg transition-colors" href="#">
+      <i class="fas fa-th-large w-5"></i>
+      <span class="">Dashboard</span>
+    </a>
+    <a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors" href="#">
+      <i class="fas fa-list w-5"></i>
+      <span class="">Battery List</span>
+    </a>
+
+
+    <a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors" href="#">
+      <i class="fas fa-info-circle w-5"></i>
+      <span class="">About</span>
+    </a>
+  </nav>
+<!-- Desktop System Info -->
+<div class="p-6 border-t border-slate-800 text-sm text-slate-400" data-purpose="system-info-desktop">
+  <h3 class="text-blue-500 font-semibold mb-3 uppercase tracking-wider text-xs">System Info</h3>
+  <div class="space-y-2">
+    <div class="flex justify-between"><span class="">Version</span><span class="text-slate-200">1.0.0</span></div>
+    <div class="flex justify-between"><span class="">Last Update</span><span class="text-slate-200">--</span></div>
+    <div class="flex justify-between"><span class="">Interval</span><span class="text-slate-200">1 s</span></div>
+  </div>
+</div>
+</div>
+</aside>
+<!-- BEGIN: Mobile Header (Hidden on Desktop) -->
+<header class="md:hidden sticky top-0 z-50 bg-[#111827]/90 backdrop-blur-md border-b border-slate-800 px-4 h-16 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <div class="bg-blue-600 p-1.5 rounded-lg">
+      <i class="fas fa-battery-full text-white text-base"></i>
+    </div>
+    <h1 class="text-sm font-bold leading-tight max-w-[120px]">Battery Monitor</h1>
+  </div>
+  <div class="flex items-center gap-4">
+    <div class="flex flex-col items-end">
+      <div class="flex items-center gap-1.5">
+        <div id="statusLamp-mobile" class="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+        <span id="status-mobile" class="text-[10px] font-bold text-slate-200 uppercase">OFFLINE</span>
+      </div>
+      <span class="clock text-[9px] text-slate-400 font-mono">--</span>
+    </div>
+    <button class="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-white bg-slate-800/50 rounded-lg">
+      <i class="fas fa-bars text-lg"></i>
+    </button>
+  </div>
+</header>
+<!-- BEGIN: Main Content Area -->
+<main class="flex-1 flex flex-col bg-[#0f172a] overflow-hidden relative">
+<!-- Desktop TopBar (Hidden on Mobile) -->
+<header class="hidden md:flex h-16 border-b border-slate-800 items-center justify-between px-8 bg-[#111827]/50 backdrop-blur-sm shrink-0">
+  <div class="flex items-center gap-8 text-sm">
+    <div class="flex items-center gap-2">
+      <div id="statusLamp" class="w-2 h-2 rounded-full bg-red-500"></div>
+      <span id="status" class="font-medium">OFFLINE</span>
+    </div>
+    <div class="flex items-center gap-2 text-slate-400">
+      <i class="fas fa-plug"></i>
+      <span class="">COM3</span>
+    </div>
+    <div class="flex items-center gap-2 text-slate-400">
+      <i class="fas fa-tachometer-alt"></i>
+      <span class="">9600bps</span>
+    </div>
+  </div>
+  <div class="flex items-center gap-6">
+    <div class="flex items-center gap-2 text-slate-200 font-mono">
+      <i class="far fa-clock"></i>
+      <span class="clock">--</span>
+    </div>
+    <button class="text-slate-400 hover:text-white transition-colors">
+      <i class="far fa-moon text-lg"></i>
+    </button>
+  </div>
+</header>
+<div class="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar pb-24 md:pb-8">
+<!-- BEGIN: Overview Section -->
+<section class="mb-6 md:mb-8" data-purpose="overview-stats">
+  <div class="flex items-center justify-between mb-4 md:mb-6">
+    <h2 class="text-blue-500 font-bold uppercase tracking-widest text-[10px] md:text-xs">Overview</h2>
+    <span class="md:hidden text-slate-500 text-[10px]">COM3 | 9600bps</span>
+  </div>
+<!-- Responsive Stat Grid (Auto stacks on mobile, grid on desktop) -->
+<div class="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-4">
+  <div class="bg-[#1e293b] p-3 md:p-4 rounded-xl border border-slate-800 flex items-center gap-3 md:gap-4">
+    <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-full bg-blue-600/20 flex items-center justify-center text-blue-500 shrink-0"><i class="fas fa-car-battery text-sm md:text-xl"></i></div>
+    <div><p class="text-slate-400 text-[9px] md:text-xs uppercase font-bold">Total Battery</p><div class="flex items-baseline gap-1"><span class="text-lg md:text-2xl font-bold">1</span><span class="hidden md:inline text-xs text-slate-400">Units</span></div></div>
+  </div>
+  <div class="bg-[#1e293b] p-3 md:p-4 rounded-xl border border-slate-800 flex items-center gap-3 md:gap-4">
+    <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-full bg-green-500/20 flex items-center justify-center text-green-500 shrink-0"><i class="fas fa-check-circle text-sm md:text-xl"></i></div>
+    <div><p class="text-slate-400 text-[9px] md:text-xs uppercase font-bold">Average SOC</p><div class="flex items-baseline gap-1"><span class="text-lg md:text-2xl font-bold">15</span><span class="hidden md:inline text-xs text-slate-400">%</span></div></div>
+  </div>
+
+  <div class="bg-[#1e293b] p-3 md:p-4 rounded-xl border border-slate-800 flex items-center gap-3 md:gap-4">
+    <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-500 shrink-0"><i class="fas fa-bolt text-sm md:text-xl"></i></div>
+    <div><p class="text-slate-400 text-[9px] md:text-xs uppercase font-bold">Total Power</p><div class="flex items-baseline gap-1"><span class="text-lg md:text-2xl font-bold">4</span><span class="hidden md:inline text-xs text-slate-400">Watt</span></div></div>
+  </div>
+  <div class="md:col-span-1 bg-[#1e293b] p-3 md:p-4 rounded-xl border border-slate-800 flex items-center gap-3 md:gap-4">
+    <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500 shrink-0"><i class="fas fa-exchange-alt text-sm md:text-xl"></i></div>
+    <div><p class="text-slate-400 text-[9px] md:text-xs uppercase font-bold">Total Current</p><div class="flex items-baseline gap-1"><span class="text-lg md:text-2xl font-bold">50.44</span><span class="hidden md:inline text-xs text-slate-400">Ampere</span></div></div>
+  </div>
+</div>
+</section>
+<!-- BEGIN: Battery Grid (Single Column Mobile, Multi Desktop) -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6" data-purpose="battery-grid">
+<!-- Battery #1: Healthy/Standby -->
+<div class="bg-[#1e293b] border-2 border-green-500/50 rounded-2xl p-4 md:p-5 flex flex-col relative" data-purpose="battery-card">
+  <div class="flex justify-between items-start mb-4 md:mb-6">
+    <div><h3 class="font-bold text-base md:text-lg">Battery #<span id="id_battery">000</span></h3><p class="text-slate-400 text-[10px] md:text-xs"><span id="manufacture"></span> <span id="battery_model"></span></p></div>
+    <span class="px-2 py-0.5 bg-green-500/10 text-green-500 rounded text-[9px] md:text-[10px] font-bold">POWER : <span id="total_power">-</span></span>
+  </div>
+  <div class="flex gap-4 md:gap-6 mb-4 md:mb-8">
+    <div class="battery-visual">
+      <div id="battery_level" class="battery-fill bg-green-500" style="height: 100%;"></div>
+      <div class="absolute inset-0 flex items-center justify-center z-20"><i class="fas fa-bolt text-white/40 text-[10px] md:text-xs"></i></div>
+    </div>
+    <div class="flex-1 grid grid-cols-2 gap-x-3 md:gap-x-4 gap-y-2 md:gap-y-3 text-[11px] md:text-xs">
+      <div><p class="text-slate-500 uppercase font-bold text-[9px] md:text-[10px]">SOC</p><p id="soc_battery" class="text-base md:text-lg font-bold">-</p></div>
+      <div><p class="text-slate-500 uppercase font-bold text-[9px] md:text-[10px]">Mode</p><p id="mode_battery" class="font-bold">-</p></div>
+      <div><p class="text-slate-500 uppercase font-bold text-[9px] md:text-[10px]">Voltage</p><p id="battery_voltage" class="font-bold">-</p></div>
+      <div class="hidden md:block"><p class="text-slate-500 uppercase font-bold text-[10px]">Temp (Max)</p><p id="max_temp" class="font-bold">-</p></div>
+      <div><p class="text-slate-500 uppercase font-bold text-[9px] md:text-[10px]">Current</p><p id="battery_current" class="font-bold">-</p></div>
+      <div class="hidden md:block"><p class="text-slate-500 uppercase font-bold text-[10px]">Temp (Min)</p><p id="min_temp" class="font-bold">-</p></div>
+    </div>
+  </div>
+  <div class="flex items-center justify-between border-t border-slate-700 pt-3 md:pt-4 mt-auto">
+    <div class="flex items-center gap-2 text-green-500"><span class="text-[9px] md:text-xs font-bold tracking-wider">Cycles : <span id="cycle_battery">-</span></span></div>
+    <div class="flex items-center gap-3 md:gap-4">
+
+      <button onclick="openBatteryModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-[9px] md:text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors uppercase">Detail <i class="fas fa-chevron-right text-[7px] md:text-[8px]"></i></button>
+    </div>
+  </div>
+</div>
+</section>
+<!-- BEGIN: SystemInfo Mobile Section (Hidden on Desktop) -->
+<section class="md:hidden mt-8 mb-4 p-5 bg-[#111827] border border-slate-800 rounded-2xl" data-purpose="system-info-mobile">
+  <h3 class="text-blue-500 font-semibold mb-4 uppercase tracking-wider text-[10px]">System Info</h3>
+  <div class="space-y-3 text-xs">
+    <div class="flex justify-between"><span class="text-slate-400">Version</span><span class="text-slate-200 font-medium">1.0.0</span></div>
+    <div class="flex justify-between"><span class="text-slate-400">Last Update</span><span class="text-slate-200 font-mono">--</span></div>
+    <div class="flex justify-between"><span class="text-slate-400">Interval</span><span class="text-slate-200">1 s</span></div>
+  </div>
+</section>
+</div>
+<!-- BEGIN: Mobile Bottom Navigation (Hidden on Desktop) -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#111827] border-t border-slate-800 flex items-center justify-around px-2 z-50">
+  <a class="flex flex-col items-center gap-1 text-blue-500" href="#"><i class="fas fa-th-large text-lg"></i><span class="text-[9px] font-bold">Dashboard</span></a>
+  <a class="flex flex-col items-center gap-1 text-slate-500" href="#"><i class="fas fa-list text-lg"></i><span class="text-[9px] font-bold">List</span></a>
+  <a class="flex flex-col items-center gap-1 text-slate-500" href="#"><i class="fas fa-info-circle text-lg"></i><span class="text-[9px] font-bold">About</span></a>
+</nav>
+<div id="batteryModal" class="fixed inset-0 z-50 flex hidden items-center justify-center p-4 md:p-8 bg-black/60 backdrop-blur-sm">
+  <div class="bg-[#102034] w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-700 shadow-2xl flex flex-col">
+<!-- Modal Header -->
+<div class="flex items-center justify-between p-6 border-b border-slate-800">
+  <div class="flex items-center gap-3">
+    <div class="w-2 h-2 rounded-full bg-slate-400"></div>
+    <h2 class="text-xl font-bold text-[#d3e4fe]"><span id="modal_manufacture"></span> #<span id="modal_id_battery"></span></h2>
+  </div>
+  <button onclick="closeBatteryModal()" class="text-slate-400 hover:text-white transition-colors">
+    <i class="fas fa-times text-xl"></i>
+  </button>
+</div>
+<div class="p-6 space-y-6">
+<!-- Top Stats Row -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div class="bg-[#2a3a4f] p-5 rounded-lg border border-slate-700">
+    <div class="flex justify-between items-start mb-4">
+      <span class="text-blue-500 font-semibold text-sm">State of Charge</span>
+      <span id="modal_soc_battery" class="text-2xl font-bold text-blue-500">-</span>
+    </div>
+    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+      <div id="modal_battery_level" class="bg-green-500 h-full" style="width: 10%"></div>
+    </div>
+    <p class="text-slate-400 text-xs mt-3">Remaining: <span id="remaining_capacity">-</span></p>
+  </div>
+  <div class="bg-[#2a3a4f] p-5 rounded-lg border border-slate-700">
+    <div class="flex justify-between items-start mb-4">
+      <span class="text-green-500 font-semibold text-sm">State of Health</span>
+      <span class="text-2xl font-bold text-green-500">98.0%</span>
+    </div>
+    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+      <div class="bg-green-500 h-full" style="width: 98%"></div>
+    </div>
+    <p class="text-slate-400 text-xs mt-3">Full Capacity: 100.00 Ah</p>
+  </div>
+  <div class="bg-[#2a3a4f] p-5 rounded-lg border border-slate-700">
+    <div class="flex justify-between items-start mb-2">
+      <span class="text-purple-500 font-semibold text-sm">Cycle Count</span>
+      <span id="modal_cycle_battery" class="text-2xl font-bold text-purple-500">-</span>
+    </div>
+    <p class="text-slate-400 text-xs mt-auto">Last Updated: <span id="last_update">00:00:00</span></p>
+  </div>
+</div>
+<!-- Metrics Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Voltage Metrics -->
+<div class="bg-[#0b1c30] p-5 rounded-lg border border-slate-800">
+  <h3 class="text-yellow-500 font-bold text-xs uppercase tracking-wider mb-4 flex items-center gap-2">
+    <i class="fas fa-bolt"></i> Voltage Metrics
+  </h3>
+  <div class="space-y-3">
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Pack Voltage</span><span id="modal_battery_voltage" class="font-mono font-bold">-</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Bus Voltage</span><span id="modal_bus_voltage" class="font-mono font-bold">-</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Min Cell Voltage</span><span id="modal_min_cell_voltage" class="font-mono font-bold">-</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Max Cell Voltage</span><span id="modal_max_cell_voltage" class="font-mono font-bold">-</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Voltage Difference</span><span id="modal_diff_cell_voltage" class="font-mono font-bold">-</span></div>
+  </div>
+</div>
+<!-- Current Metrics -->
+<div class="bg-[#0b1c30] p-5 rounded-lg border border-slate-800">
+  <h3 class="text-blue-500 font-bold text-xs uppercase tracking-wider mb-4 flex items-center gap-2">
+    <i class="fas fa-tachometer-alt"></i> Current Metrics
+  </h3>
+  <div class="space-y-3">
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Pack Current</span><span id="modal_battery_current" class="font-mono font-bold">-</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Bus Current</span><span id="modal_bus_current" class="font-mono font-bold">-</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Pack Power</span><span class="font-mono font-bold">0.00 W</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Bus Power</span><span id="modal_bus_power" class="font-mono font-bold">-</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-400">Loss Power</span><span id="modal_loss_power" class="font-mono font-bold">-</span></div>
+  </div>
+</div>
+</div>
+<!-- Cell Voltages Section -->
+<div class="bg-[#0b1c30] p-5 rounded-lg border border-slate-800">
+    <h3 class="text-green-500 font-bold text-xs uppercase tracking-wider mb-4 flex items-center gap-2">
+        <i class="fas fa-car-battery"></i> Cell Voltages
+    </h3>
+    <div id="list_cell_voltage" class="grid grid-cols-3 md:grid-cols-5 gap-3"></div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body>
+</html>
+
+<script src="js/app.js"></script>
+<script>
+  function updateClock() {
+    const now = new Date();
+    const time = now.toLocaleTimeString("id-ID", { hour12: false });
+
+    document.querySelectorAll(".clock").forEach(el => {
+      el.textContent = time;
+    });
+  }
+
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  function openBatteryModal() {
+    const modal = document.getElementById("batteryModal");
+
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+
+    document.body.classList.add("overflow-hidden");
+}
+
+function closeBatteryModal() {
+    const modal = document.getElementById("batteryModal");
+
+    modal.classList.remove("flex");
+    modal.classList.add("hidden");
+
+    document.body.classList.remove("overflow-hidden");
+}
+</script>
