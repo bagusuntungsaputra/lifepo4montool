@@ -1,6 +1,6 @@
 async function loadBattery() {
     try {
-        const response = await fetch("http://103.174.236.47:14999/api/battery");
+        const response = await fetch("https://103.174.236.47:14999/api/battery");
         const data = await response.json();
 
         // Status
