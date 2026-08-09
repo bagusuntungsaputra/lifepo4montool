@@ -1,4 +1,4 @@
-const API_URL = "https://lifepo4mon.baharimedia.net/api/battery";
+const API_URL = "http://103.174.236.47:14999/api/battery";
 
 
 // ======================================================
@@ -699,7 +699,7 @@ function renderBatteryCards(batteries) {
                                 tracking-wider
                             "
                         >
-                            Discharge Events :
+                            Discharge Times :
                             <span
                                 data-field="discharge"
                             >
@@ -1137,7 +1137,7 @@ function updateCardAlarm(card, battery) {
 
         footerText.innerHTML = `
 
-            Discharge Events :
+            Discharge Times :
 
             <span
                 data-field="discharge"
