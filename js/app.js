@@ -1,4 +1,4 @@
-const API_URL = "https://lifepo4mon.baharimedia.net/api/battery";
+const API_URL = "http://103.174.236.47:14999/api/battery";
 
 
 // ======================================================
@@ -1700,7 +1700,6 @@ function renderCellVoltages(cells) {
                         text-[9px]
                         text-red-400
                     ">
-                        MAX
                     </span>
                 `;
 
@@ -1720,7 +1719,6 @@ function renderCellVoltages(cells) {
                         text-[9px]
                         text-yellow-400
                     ">
-                        MIN
                     </span>
                 `;
             }
