@@ -1690,15 +1690,15 @@ function renderCellVoltages(cells) {
             ) {
 
                 border =
-                    "border-red-500";
+                    "border-green-500";
 
                 text =
-                    "text-red-400";
+                    "text-green-400";
 
                 label = `
                     <span class="
                         text-[9px]
-                        text-red-400
+                        text-green-400
                     ">
                     </span>
                 `;
@@ -1709,15 +1709,15 @@ function renderCellVoltages(cells) {
             ) {
 
                 border =
-                    "border-yellow-500";
+                    "border-red-500";
 
                 text =
-                    "text-yellow-400";
+                    "text-red-400";
 
                 label = `
                     <span class="
                         text-[9px]
-                        text-yellow-400
+                        text-red-400
                     ">
                     </span>
                 `;
