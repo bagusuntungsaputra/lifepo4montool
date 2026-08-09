@@ -1,4 +1,4 @@
-const API_URL = "https://lifepo4.baharimedia.net/api/battery";
+const API_URL = "https://lifepo4mon.baharimedia.net/api/battery";
 
 
 // ======================================================
