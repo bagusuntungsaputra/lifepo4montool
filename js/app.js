@@ -1,8 +1,19 @@
 const API_URL = "https://lifepo4mon.baharimedia.net/api/battery";
 
+
+// ======================================================
+// GLOBAL STATE
+// ======================================================
+
 let batteryData = [];
-let selectedBatteryIndex = null;
+
+let selectedBatterySlave = null;
+
+let batteryStructure = "";
+
 let isLoading = false;
+
+let apiController = null;
 
 
 // ======================================================
@@ -10,6 +21,7 @@ let isLoading = false;
 // ======================================================
 
 function setText(id, value) {
+
     const el = document.getElementById(id);
 
     if (el) {
@@ -19,6 +31,7 @@ function setText(id, value) {
 
 
 function num(value, decimals = 2) {
+
     const n = Number(value);
 
     if (!Number.isFinite(n)) {
@@ -30,8 +43,29 @@ function num(value, decimals = 2) {
 
 
 function getPower(battery) {
-    return Number(battery.battery_voltage || 0) *
-           Number(battery.battery_current || 0);
+
+    return (
+        Number(battery.battery_voltage || 0) *
+        Number(battery.battery_current || 0)
+    );
+}
+
+
+function getPackPower(battery) {
+
+    return (
+        Number(battery.battery_voltage || 0) *
+        Number(battery.battery_current || 0)
+    );
+}
+
+
+function getBusPower(battery) {
+
+    return (
+        Number(battery.battery_bus_voltage || 0) *
+        Number(battery.battery_current || 0)
+    );
 }
 
 
@@ -63,6 +97,16 @@ function getModeClass(mode) {
 }
 
 
+function getCurrentTime() {
+
+    return new Date()
+        .toLocaleTimeString("id-ID", {
+            hour12: false
+        })
+        .replace(/\./g, ":");
+}
+
+
 // ======================================================
 // CONNECTION STATUS
 // ======================================================
@@ -72,7 +116,9 @@ function setStatusOnline() {
     setText("status", "ONLINE");
     setText("status-mobile", "ONLINE");
 
-    const lamp = document.getElementById("statusLamp");
+    const lamp =
+        document.getElementById("statusLamp");
+
     const lampMobile =
         document.getElementById("statusLamp-mobile");
 
@@ -93,7 +139,9 @@ function setStatusOffline() {
     setText("status", "OFFLINE");
     setText("status-mobile", "OFFLINE");
 
-    const lamp = document.getElementById("statusLamp");
+    const lamp =
+        document.getElementById("statusLamp");
+
     const lampMobile =
         document.getElementById("statusLamp-mobile");
 
@@ -110,37 +158,91 @@ function setStatusOffline() {
 
 
 // ======================================================
+// CLOCK
+// ======================================================
+
+function updateClock() {
+
+    const time = getCurrentTime();
+
+    document
+        .querySelectorAll(".clock")
+        .forEach(el => {
+            el.innerText = time;
+        });
+
+
+    const dashboardClock =
+        document.getElementById(
+            "dashboard-clock"
+        );
+
+    if (dashboardClock) {
+        dashboardClock.innerText = time;
+    }
+}
+
+
+updateClock();
+
+setInterval(
+    updateClock,
+    1000
+);
+
+
+// ======================================================
 // OVERVIEW
 // ======================================================
 
 function updateOverview(data) {
 
-    const summary = data.summary || {};
+    const summary =
+        data.summary || {};
+
 
     setText(
         "overview_total_battery",
         summary.online ?? 0
     );
 
+
     setText(
         "overview_average_soc",
-        num(summary.average_soc, 0)
+        num(
+            summary.average_soc,
+            0
+        )
     );
+
 
     setText(
         "overview_total_power",
-        num(summary.total_power, 1)
+        num(
+            summary.total_power,
+            1
+        )
     );
+
 
     setText(
         "overview_total_current",
-        num(summary.total_current, 2)
+        num(
+            summary.total_current,
+            2
+        )
     );
+
+
+    // Desktop IP
 
     setText(
         "api-ip",
         summary.ip ?? "-"
     );
+
+
+    // Desktop RSSI
 
     setText(
         "api-rssi",
@@ -149,10 +251,16 @@ function updateOverview(data) {
             : "-"
     );
 
+
+    // Mobile IP
+
     setText(
         "mobile-api-ip",
         summary.ip ?? "-"
     );
+
+
+    // Mobile RSSI
 
     setText(
         "mobile-api-rssi",
@@ -164,8 +272,33 @@ function updateOverview(data) {
 
 
 // ======================================================
-// BATTERY CARD
+// CHECK BATTERY STRUCTURE
 // ======================================================
+
+function getBatteryStructure(batteries) {
+
+    return batteries
+        .filter(
+            battery =>
+                battery.online === true
+        )
+        .map(
+            battery =>
+                String(battery.slave)
+        )
+        .sort()
+        .join(",");
+}
+
+
+// ======================================================
+// RENDER BATTERY CARDS
+// ======================================================
+//
+// PENTING:
+// Fungsi ini TIDAK dipanggil setiap 1 detik.
+// Hanya ketika battery online/offline berubah.
+//
 
 function renderBatteryCards(batteries) {
 
@@ -174,21 +307,17 @@ function renderBatteryCards(batteries) {
             '[data-purpose="battery-grid"]'
         );
 
+
     if (!grid) {
         return;
     }
 
 
-    // Hanya battery online
     const online =
-        batteries
-            .map((battery, index) => ({
-                battery,
-                index
-            }))
-            .filter(item =>
-                item.battery.online === true
-            );
+        batteries.filter(
+            battery =>
+                battery.online === true
+        );
 
 
     grid.innerHTML = "";
@@ -197,6 +326,7 @@ function renderBatteryCards(batteries) {
     if (online.length === 0) {
 
         grid.innerHTML = `
+
             <div class="
                 md:col-span-2
                 lg:col-span-3
@@ -224,400 +354,967 @@ function renderBatteryCards(batteries) {
                 </p>
 
             </div>
+
         `;
 
         return;
     }
 
 
-    online.forEach(item => {
+    online.forEach(
+        battery => {
 
-        const battery = item.battery;
-        const index = item.index;
-
-        const soc =
-            Number(battery.soc || 0);
-
-        const power =
-            getPower(battery);
-
-        const socColor =
-            getSocColor(soc);
-
-        const modeClass =
-            getModeClass(battery.mode);
+            const slave =
+                battery.slave;
 
 
-        // Alarm
-        const alarm =
-            battery.alarm_register || {};
-
-        const hasAlarm =
-            Number(alarm.critical1 || 0) > 0 ||
-            Number(alarm.critical2 || 0) > 0 ||
-            Number(alarm.major || 0) > 0 ||
-            Number(alarm.minor || 0) > 0;
+            const card =
+                document.createElement(
+                    "div"
+                );
 
 
-        const border =
-            hasAlarm
-                ? "border-red-500/60"
-                : "border-green-500/50";
+            card.dataset.slave =
+                String(slave);
 
 
-        const card =
-            document.createElement("div");
-
-
-        card.className = `
-            bg-[#1e293b]
-            border-2
-            ${border}
-            rounded-2xl
-            p-4 md:p-5
-            flex
-            flex-col
-            relative
-        `;
-
-
-        card.innerHTML = `
-
-            <!-- HEADER -->
-
-            <div class="
+            card.className = `
+                bg-[#1e293b]
+                border-2
+                rounded-2xl
+                p-4 md:p-5
                 flex
-                justify-between
-                items-start
-                mb-4 md:mb-6
-            ">
-
-                <div>
-
-                    <h3 class="
-                        font-bold
-                        text-base md:text-lg
-                    ">
-                        Battery #${battery.slave}
-                    </h3>
-
-                    <p class="
-                        text-slate-400
-                        text-[10px] md:text-xs
-                    ">
-                        ${battery.manufacturer || "-"}
-                        ${battery.battery_model || ""}
-                    </p>
-
-                </div>
+                flex-col
+                relative
+            `;
 
 
-                <span class="
-                    px-2
-                    py-0.5
-                    rounded
-                    text-[9px] md:text-[10px]
-                    font-bold
-                    ${modeClass}
-                    bg-slate-500/10
-                ">
-                    POWER :
-                    ${num(power, 1)} W
-                </span>
+            card.innerHTML = `
 
-            </div>
-
-
-            <!-- BODY -->
-
-            <div class="
-                flex
-                gap-4 md:gap-6
-                mb-4 md:mb-8
-            ">
-
-
-                <!-- BATTERY VISUAL -->
-
-                <div class="battery-visual">
-
-                    <div
-                        class="
-                            battery-fill
-                            bg-${socColor}-500
-                        "
-                        style="
-                            height:${Math.max(
-                                0,
-                                Math.min(100, soc)
-                            )}%;
-                        "
-                    ></div>
-
-                    <div class="
-                        absolute
-                        inset-0
-                        flex
-                        items-center
-                        justify-center
-                        z-20
-                    ">
-
-                        <i class="
-                            fas fa-bolt
-                            text-white/40
-                            text-[10px]
-                            md:text-xs
-                        "></i>
-
-                    </div>
-
-                </div>
-
-
-                <!-- DATA -->
+                <!-- HEADER -->
 
                 <div class="
-                    flex-1
-                    grid
-                    grid-cols-2
-                    gap-x-3 md:gap-x-4
-                    gap-y-2 md:gap-y-3
-                    text-[11px] md:text-xs
+                    flex
+                    justify-between
+                    items-start
+                    mb-4 md:mb-6
                 ">
 
-
                     <div>
 
-                        <p class="
-                            text-slate-500
-                            uppercase
+                        <h3 class="
                             font-bold
-                            text-[9px] md:text-[10px]
+                            text-base md:text-lg
                         ">
-                            SOC
-                        </p>
+
+                            Battery #${slave}
+
+                        </h3>
+
 
                         <p class="
-                            text-base
-                            md:text-lg
-                            font-bold
+                            text-slate-400
+                            text-[10px] md:text-xs
                         ">
-                            ${num(soc, 0)}%
+
+                            <span
+                                data-field="manufacturer"
+                            >
+                                ${battery.manufacturer || "-"}
+                            </span>
+
+                            <span
+                                data-field="battery-model"
+                            >
+                                ${battery.battery_model || ""}
+                            </span>
+
                         </p>
 
                     </div>
 
 
-                    <div>
-
-                        <p class="
-                            text-slate-500
-                            uppercase
-                            font-bold
-                            text-[9px] md:text-[10px]
-                        ">
-                            Mode
-                        </p>
-
-                        <p class="
-                            font-bold
-                            ${modeClass}
-                        ">
-                            ${battery.mode || "-"}
-                        </p>
-
-                    </div>
-
-
-                    <div>
-
-                        <p class="
-                            text-slate-500
-                            uppercase
-                            font-bold
-                            text-[9px] md:text-[10px]
-                        ">
-                            Voltage
-                        </p>
-
-                        <p class="font-bold">
-                            ${num(
-                                battery.battery_voltage,
-                                2
-                            )} V
-                        </p>
-
-                    </div>
-
-
-                    <div class="hidden md:block">
-
-                        <p class="
-                            text-slate-500
-                            uppercase
-                            font-bold
-                            text-[10px]
-                        ">
-                            Temp (Max)
-                        </p>
-
-                        <p class="font-bold">
-                            ${battery.max_temp ?? "-"} °C
-                        </p>
-
-                    </div>
-
-
-                    <div>
-
-                        <p class="
-                            text-slate-500
-                            uppercase
-                            font-bold
-                            text-[9px] md:text-[10px]
-                        ">
-                            Current
-                        </p>
-
-                        <p class="font-bold">
-                            ${num(
-                                battery.battery_current,
-                                2
-                            )} A
-                        </p>
-
-                    </div>
-
-
-                    <div class="hidden md:block">
-
-                        <p class="
-                            text-slate-500
-                            uppercase
-                            font-bold
-                            text-[10px]
-                        ">
-                            Temp (Min)
-                        </p>
-
-                        <p class="font-bold">
-                            ${battery.min_temp ?? "-"} °C
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <!-- FOOTER -->
-
-            <div class="
-                flex
-                items-center
-                justify-between
-                border-t
-                border-slate-700
-                pt-3 md:pt-4
-                mt-auto
-            ">
-
-
-                <div class="
-                    ${hasAlarm
-                        ? "text-red-400"
-                        : "text-green-500"}
-                ">
+                    <!-- POWER -->
 
                     <span class="
+                        px-2
+                        py-0.5
+                        rounded
                         text-[9px]
-                        md:text-xs
+                        md:text-[10px]
                         font-bold
-                        tracking-wider
+                        text-slate-200
+                        bg-slate-700/40
                     ">
 
-                        ${
-                            hasAlarm
-                                ? "Alarm"
-                                : "Discharge Event"
-                        }
+                        POWER :
 
-                        :
-
-                        ${
-                            hasAlarm
-                                ? "CHECK"
-                                : battery.discharge_times
-                        }
+                        <span
+                            data-field="power"
+                        >
+                            -
+                        </span>
 
                     </span>
 
                 </div>
 
 
-                <button
-                    onclick="openBatteryModal(${index})"
-                    class="
-                        bg-blue-600
-                        hover:bg-blue-500
-                        text-white
-                        text-[9px] md:text-[10px]
-                        font-bold
-                        px-3
-                        py-1.5
-                        rounded-lg
-                        flex
-                        items-center
-                        gap-1
-                        transition-colors
-                        uppercase
-                    "
-                >
+                <!-- BODY -->
 
-                    Detail
-
-                    <i class="
-                        fas fa-chevron-right
-                        text-[7px] md:text-[8px]
-                    "></i>
-
-                </button>
-
-            </div>
-
-        `;
+                <div class="
+                    flex
+                    gap-4 md:gap-6
+                    mb-4 md:mb-8
+                ">
 
 
-        grid.appendChild(card);
-    });
+                    <!-- BATTERY VISUAL -->
+
+                    <div class="battery-visual">
+
+                        <div
+                            data-field="battery-level"
+                            class="battery-fill bg-green-500"
+                            style="height:0%"
+                        ></div>
+
+
+                        <div class="
+                            absolute
+                            inset-0
+                            flex
+                            items-center
+                            justify-center
+                            z-20
+                        ">
+
+                            <i class="
+                                fas fa-bolt
+                                text-white/40
+                                text-[10px]
+                                md:text-xs
+                            "></i>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- DATA -->
+
+                    <div class="
+                        flex-1
+                        grid
+                        grid-cols-2
+                        gap-x-3 md:gap-x-4
+                        gap-y-2 md:gap-y-3
+                        text-[11px] md:text-xs
+                    ">
+
+
+                        <!-- SOC -->
+
+                        <div>
+
+                            <p class="
+                                text-slate-500
+                                uppercase
+                                font-bold
+                                text-[9px]
+                                md:text-[10px]
+                            ">
+                                SOC
+                            </p>
+
+
+                            <p
+                                data-field="soc"
+                                class="
+                                    text-base
+                                    md:text-lg
+                                    font-bold
+                                "
+                            >
+                                -
+                            </p>
+
+                        </div>
+
+
+                        <!-- MODE -->
+
+                        <div>
+
+                            <p class="
+                                text-slate-500
+                                uppercase
+                                font-bold
+                                text-[9px]
+                                md:text-[10px]
+                            ">
+                                Mode
+                            </p>
+
+
+                            <p
+                                data-field="mode"
+                                class="font-bold"
+                            >
+                                -
+                            </p>
+
+                        </div>
+
+
+                        <!-- VOLTAGE -->
+
+                        <div>
+
+                            <p class="
+                                text-slate-500
+                                uppercase
+                                font-bold
+                                text-[9px]
+                                md:text-[10px]
+                            ">
+                                Voltage
+                            </p>
+
+
+                            <p
+                                data-field="voltage"
+                                class="font-bold"
+                            >
+                                -
+                            </p>
+
+                        </div>
+
+
+                        <!-- MAX TEMP -->
+
+                        <div class="
+                            hidden md:block
+                        ">
+
+                            <p class="
+                                text-slate-500
+                                uppercase
+                                font-bold
+                                text-[10px]
+                            ">
+                                Temp (Max)
+                            </p>
+
+
+                            <p
+                                data-field="max-temp"
+                                class="font-bold"
+                            >
+                                -
+                            </p>
+
+                        </div>
+
+
+                        <!-- CURRENT -->
+
+                        <div>
+
+                            <p class="
+                                text-slate-500
+                                uppercase
+                                font-bold
+                                text-[9px]
+                                md:text-[10px]
+                            ">
+                                Current
+                            </p>
+
+
+                            <p
+                                data-field="current"
+                                class="font-bold"
+                            >
+                                -
+                            </p>
+
+                        </div>
+
+
+                        <!-- MIN TEMP -->
+
+                        <div class="
+                            hidden md:block
+                        ">
+
+                            <p class="
+                                text-slate-500
+                                uppercase
+                                font-bold
+                                text-[10px]
+                            ">
+                                Temp (Min)
+                            </p>
+
+
+                            <p
+                                data-field="min-temp"
+                                class="font-bold"
+                            >
+                                -
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- FOOTER -->
+
+                <div class="
+                    flex
+                    items-center
+                    justify-between
+                    border-t
+                    border-slate-700
+                    pt-3 md:pt-4
+                    mt-auto
+                ">
+
+
+                    <div
+                        data-field="footer"
+                    >
+
+                        <span
+                            data-field="footer-text"
+                            class="
+                                text-[9px]
+                                md:text-xs
+                                font-bold
+                                tracking-wider
+                            "
+                        >
+                            Discharge Events :
+                            <span
+                                data-field="discharge"
+                            >
+                                -
+                            </span>
+                        </span>
+
+                    </div>
+
+
+                    <!-- DETAIL -->
+
+                    <button
+                        type="button"
+                        class="
+                            detail-battery-btn
+                            bg-blue-600
+                            hover:bg-blue-500
+                            active:bg-blue-700
+                            text-white
+                            text-[9px]
+                            md:text-[10px]
+                            font-bold
+                            px-3
+                            py-1.5
+                            rounded-lg
+                            flex
+                            items-center
+                            gap-1
+                            transition-colors
+                            uppercase
+                        "
+                        data-battery-slave="${slave}"
+                    >
+
+                        Detail
+
+                        <i class="
+                            fas fa-chevron-right
+                            text-[7px]
+                            md:text-[8px]
+                        "></i>
+
+                    </button>
+
+                </div>
+
+            `;
+
+
+            grid.appendChild(
+                card
+            );
+
+
+            // Isi data pertama
+
+            updateBatteryCard(
+                battery
+            );
+
+        }
+    );
 }
 
 
 // ======================================================
-// MODAL
+// UPDATE CARD DATA
+// ======================================================
+//
+// Hanya mengubah nilai.
+// TIDAK membuat card baru.
+//
+
+function updateBatteryCard(battery) {
+
+    const card =
+        document.querySelector(
+            `[data-slave="${battery.slave}"]`
+        );
+
+
+    if (!card) {
+        return;
+    }
+
+
+    const soc =
+        Number(
+            battery.soc || 0
+        );
+
+
+    const voltage =
+        Number(
+            battery.battery_voltage || 0
+        );
+
+
+    const current =
+        Number(
+            battery.battery_current || 0
+        );
+
+
+    const power =
+        voltage * current;
+
+
+    // ==================================================
+    // MANUFACTURER
+    // ==================================================
+
+    const manufacturer =
+        card.querySelector(
+            '[data-field="manufacturer"]'
+        );
+
+
+    if (manufacturer) {
+
+        manufacturer.innerText =
+            battery.manufacturer || "-";
+    }
+
+
+    // ==================================================
+    // MODEL
+    // ==================================================
+
+    const model =
+        card.querySelector(
+            '[data-field="battery-model"]'
+        );
+
+
+    if (model) {
+
+        model.innerText =
+            battery.battery_model || "";
+    }
+
+
+    // ==================================================
+    // SOC
+    // ==================================================
+
+    const socEl =
+        card.querySelector(
+            '[data-field="soc"]'
+        );
+
+
+    if (socEl) {
+
+        socEl.innerText =
+            num(soc, 0) + "%";
+    }
+
+
+    // ==================================================
+    // VOLTAGE
+    // ==================================================
+
+    const voltageEl =
+        card.querySelector(
+            '[data-field="voltage"]'
+        );
+
+
+    if (voltageEl) {
+
+        voltageEl.innerText =
+            num(
+                voltage,
+                2
+            ) + " V";
+    }
+
+
+    // ==================================================
+    // CURRENT
+    // ==================================================
+
+    const currentEl =
+        card.querySelector(
+            '[data-field="current"]'
+        );
+
+
+    if (currentEl) {
+
+        currentEl.innerText =
+            num(
+                current,
+                2
+            ) + " A";
+    }
+
+
+    // ==================================================
+    // POWER
+    // ==================================================
+
+    const powerEl =
+        card.querySelector(
+            '[data-field="power"]'
+        );
+
+
+    if (powerEl) {
+
+        powerEl.innerText =
+            num(
+                power,
+                1
+            ) + " W";
+    }
+
+
+    // ==================================================
+    // MODE
+    // ==================================================
+
+    const modeEl =
+        card.querySelector(
+            '[data-field="mode"]'
+        );
+
+
+    if (modeEl) {
+
+        modeEl.innerText =
+            battery.mode || "-";
+
+
+        modeEl.className =
+            "font-bold " +
+            getModeClass(
+                battery.mode
+            );
+    }
+
+
+    // ==================================================
+    // MAX TEMP
+    // ==================================================
+
+    const maxTemp =
+        card.querySelector(
+            '[data-field="max-temp"]'
+        );
+
+
+    if (maxTemp) {
+
+        maxTemp.innerText =
+            (
+                battery.max_temp ??
+                "-"
+            ) + " °C";
+    }
+
+
+    // ==================================================
+    // MIN TEMP
+    // ==================================================
+
+    const minTemp =
+        card.querySelector(
+            '[data-field="min-temp"]'
+        );
+
+
+    if (minTemp) {
+
+        minTemp.innerText =
+            (
+                battery.min_temp ??
+                "-"
+            ) + " °C";
+    }
+
+
+    // ==================================================
+    // DISCHARGE EVENTS
+    // ==================================================
+
+    const discharge =
+        card.querySelector(
+            '[data-field="discharge"]'
+        );
+
+
+    if (discharge) {
+
+        discharge.innerText =
+            battery.discharge_times ??
+            "-";
+    }
+
+
+    // ==================================================
+    // BATTERY LEVEL
+    // ==================================================
+
+    const level =
+        card.querySelector(
+            '[data-field="battery-level"]'
+        );
+
+
+    if (level) {
+
+        level.style.height =
+            Math.max(
+                0,
+                Math.min(
+                    100,
+                    soc
+                )
+            ) + "%";
+
+
+        const color =
+            getSocColor(soc);
+
+
+        level.className =
+            `battery-fill bg-${color}-500`;
+    }
+
+
+    // ==================================================
+    // ALARM
+    // ==================================================
+
+    updateCardAlarm(
+        card,
+        battery
+    );
+}
+
+
+// ======================================================
+// UPDATE CARD ALARM
 // ======================================================
 
-function openBatteryModal(index) {
+function updateCardAlarm(card, battery) {
 
-    const battery =
-        batteryData[index];
+    const alarm =
+        battery.alarm_register || {};
+
+
+    const critical1 =
+        Number(
+            alarm.critical1 || 0
+        );
+
+
+    const critical2 =
+        Number(
+            alarm.critical2 || 0
+        );
+
+
+    const major =
+        Number(
+            alarm.major || 0
+        );
+
+
+    const minor =
+        Number(
+            alarm.minor || 0
+        );
+
+
+    const hasAlarm =
+        critical1 > 0 ||
+        critical2 > 0 ||
+        major > 0 ||
+        minor > 0;
+
+
+    // Border
+
+    card.classList.remove(
+        "border-red-500/60",
+        "border-green-500/50"
+    );
+
+
+    card.classList.add(
+        hasAlarm
+            ? "border-red-500/60"
+            : "border-green-500/50"
+    );
+
+
+    // Footer
+
+    const footer =
+        card.querySelector(
+            '[data-field="footer"]'
+        );
+
+
+    const footerText =
+        card.querySelector(
+            '[data-field="footer-text"]'
+        );
+
+
+    if (!footer || !footerText) {
+        return;
+    }
+
+
+    if (hasAlarm) {
+
+        footer.className =
+            "text-red-400";
+
+
+        footerText.innerHTML =
+            "Alarm : CHECK";
+
+    }
+    else {
+
+        footer.className =
+            "text-green-500";
+
+
+        footerText.innerHTML = `
+
+            Discharge Events :
+
+            <span
+                data-field="discharge"
+            >
+                ${
+                    battery.discharge_times ??
+                    "-"
+                }
+            </span>
+
+        `;
+    }
+}
+
+
+// ======================================================
+// FIND BATTERY
+// ======================================================
+
+function findBattery(slave) {
+
+    return batteryData.find(
+        battery =>
+            String(battery.slave) ===
+            String(slave)
+    );
+}
+
+
+// ======================================================
+// OPEN MODAL
+// ======================================================
+//
+// Mendukung:
+// openBatteryModal(slave)
+// maupun
+// openBatteryModal(index)
+// dari kode lama.
+//
+
+function openBatteryModal(value) {
+
+    let battery = null;
+
+
+    // Cari berdasarkan slave terlebih dahulu
+
+    battery =
+        findBattery(value);
+
+
+    // Compatibility dengan onclick lama
+    // jika value ternyata index
+
+    if (!battery) {
+
+        const index =
+            Number(value);
+
+
+        if (
+            Number.isInteger(index) &&
+            batteryData[index]
+        ) {
+
+            battery =
+                batteryData[index];
+        }
+    }
+
+
+    if (!battery) {
+
+        console.warn(
+            "Battery tidak ditemukan:",
+            value
+        );
+
+        return;
+    }
+
+
+    selectedBatterySlave =
+        String(
+            battery.slave
+        );
+
+
+    updateModalOnly(
+        battery
+    );
+
+
+    const modal =
+        document.getElementById(
+            "batteryModal"
+        );
+
+
+    if (!modal) {
+        return;
+    }
+
+
+    modal.classList.remove(
+        "hidden"
+    );
+
+
+    modal.classList.add(
+        "flex"
+    );
+
+
+    document.body.classList.add(
+        "overflow-hidden"
+    );
+}
+
+
+// ======================================================
+// CLOSE MODAL
+// ======================================================
+
+function closeBatteryModal() {
+
+    const modal =
+        document.getElementById(
+            "batteryModal"
+        );
+
+
+    if (!modal) {
+        return;
+    }
+
+
+    modal.classList.remove(
+        "flex"
+    );
+
+
+    modal.classList.add(
+        "hidden"
+    );
+
+
+    document.body.classList.remove(
+        "overflow-hidden"
+    );
+
+
+    selectedBatterySlave =
+        null;
+}
+
+
+// ======================================================
+// UPDATE MODAL
+// ======================================================
+
+function updateModalOnly(battery) {
 
     if (!battery) {
         return;
     }
 
 
-    selectedBatteryIndex = index;
-
-
-    // Header
+    // ==================================================
+    // HEADER
+    // ==================================================
 
     setText(
         "modal_id_battery",
         battery.slave
     );
+
 
     setText(
         "modal_manufacture",
@@ -625,17 +1322,28 @@ function openBatteryModal(index) {
     );
 
 
+    // ==================================================
     // SOC
+    // ==================================================
 
     const soc =
-        Number(battery.soc || 0);
+        Number(
+            battery.soc || 0
+        );
 
 
     setText(
         "modal_soc_battery",
-        num(soc, 0) + "%"
+        num(
+            soc,
+            0
+        ) + "%"
     );
 
+
+    // ==================================================
+    // BATTERY LEVEL
+    // ==================================================
 
     const level =
         document.getElementById(
@@ -648,7 +1356,10 @@ function openBatteryModal(index) {
         level.style.width =
             Math.max(
                 0,
-                Math.min(100, soc)
+                Math.min(
+                    100,
+                    soc
+                )
             ) + "%";
 
 
@@ -657,12 +1368,14 @@ function openBatteryModal(index) {
             level.className =
                 "bg-blue-500 h-full";
 
-        } else if (soc >= 30) {
+        }
+        else if (soc >= 30) {
 
             level.className =
                 "bg-yellow-500 h-full";
 
-        } else {
+        }
+        else {
 
             level.className =
                 "bg-red-500 h-full";
@@ -670,30 +1383,43 @@ function openBatteryModal(index) {
     }
 
 
-    // Remaining Capacity
+    // ==================================================
+    // CAPACITY
+    // ==================================================
 
     const capacity =
         Number(
             battery.battery_capacity || 0
         );
 
+
     setText(
         "modal_full_capacity",
-        num(capacity, 2) + " Ah"
+        num(
+            capacity,
+            2
+        ) + " Ah"
     );
 
 
     const remaining =
-        capacity * soc / 100;
+        capacity *
+        soc /
+        100;
 
 
     setText(
         "remaining_capacity",
-        num(remaining, 2) + " Ah"
+        num(
+            remaining,
+            2
+        ) + " Ah"
     );
 
 
-    // Cycle
+    // ==================================================
+    // DISCHARGE
+    // ==================================================
 
     setText(
         "modal_cycle_battery",
@@ -701,12 +1427,26 @@ function openBatteryModal(index) {
     );
 
 
-    // Voltage
+    // ==================================================
+    // VOLTAGE
+    // ==================================================
+
+    const packVoltage =
+        Number(
+            battery.battery_voltage || 0
+        );
+
+
+    const busVoltage =
+        Number(
+            battery.battery_bus_voltage || 0
+        );
+
 
     setText(
         "modal_battery_voltage",
         num(
-            battery.battery_voltage,
+            packVoltage,
             2
         ) + " V"
     );
@@ -715,11 +1455,15 @@ function openBatteryModal(index) {
     setText(
         "modal_bus_voltage",
         num(
-            battery.battery_bus_voltage,
+            busVoltage,
             2
         ) + " V"
     );
 
+
+    // ==================================================
+    // CELL VOLTAGE
+    // ==================================================
 
     setText(
         "modal_min_cell_voltage",
@@ -748,7 +1492,9 @@ function openBatteryModal(index) {
     );
 
 
-    // Current
+    // ==================================================
+    // CURRENT
+    // ==================================================
 
     const current =
         Number(
@@ -758,140 +1504,108 @@ function openBatteryModal(index) {
 
     setText(
         "modal_battery_current",
-        num(current, 2) + " A"
+        num(
+            current,
+            2
+        ) + " A"
     );
 
 
-    // JSON tidak mempunyai bus current
+    // JSON belum memiliki bus_current
+
     setText(
         "modal_bus_current",
-        num(current, 2) + " A"
+        num(
+            current,
+            2
+        ) + " A"
     );
 
 
-    // Power
-
-    const power =
-        getPower(battery);
-
-
-    // Pack Power
+    // ==================================================
+    // PACK POWER
+    // ==================================================
 
     const packPower =
-        Number(battery.battery_voltage || 0) *
-        Number(battery.battery_current || 0);
+        getPackPower(
+            battery
+        );
+
 
     setText(
         "modal_pack_power",
-        num(packPower, 1) + " W"
+        num(
+            packPower,
+            1
+        ) + " W"
     );
 
 
-    // Bus Power
-    
+    // ==================================================
+    // BUS POWER
+    // ==================================================
+
     const busPower =
-        Number(battery.battery_bus_voltage || 0) *
-        Number(battery.battery_current || 0);
+        getBusPower(
+            battery
+        );
+
 
     setText(
         "modal_bus_power",
-        num(busPower, 1) + " W"
+        num(
+            busPower,
+            1
+        ) + " W"
     );
 
 
-    // Loss Power
+    // ==================================================
+    // POWER DIFFERENCE
+    // ==================================================
 
-    const voltage =
-        Number(
-            battery.battery_voltage || 0
+    const powerDifference =
+        Math.abs(
+            packPower -
+            busPower
         );
-
-    const busVoltage =
-        Number(
-            battery.battery_bus_voltage || 0
-        );
-
-
-    const loss =
-        (voltage - busVoltage) *
-        current;
 
 
     setText(
         "modal_loss_power",
-        num(loss, 1) + " W"
+        num(
+            powerDifference,
+            1
+        ) + " W"
     );
 
 
-    // Last Update
+    // ==================================================
+    // LAST UPDATE
+    // ==================================================
 
     setText(
         "last_update",
-        new Date().toLocaleTimeString(
-            "id-ID",
-            {
-                hour12: false
-            }
-        )
+        getCurrentTime()
     );
 
 
-    // Cell
+    // ==================================================
+    // CELL VOLTAGE
+    // ==================================================
 
     renderCellVoltages(
         battery.cell_voltage || []
     );
 
 
-    // Alarm
+    // ==================================================
+    // ALARM
+    // ==================================================
 
     renderAlarm(
         battery.alarm_register || {}
     );
-
-
-    // Open modal
-
-    const modal =
-        document.getElementById(
-            "batteryModal"
-        );
-
-
-    if (modal) {
-
-        modal.classList.remove("hidden");
-        modal.classList.add("flex");
-
-        document.body.classList.add(
-            "overflow-hidden"
-        );
-    }
-}
-
-
-function closeBatteryModal() {
-
-    const modal =
-        document.getElementById(
-            "batteryModal"
-        );
-
-
-    if (!modal) {
-        return;
-    }
-
-
-    modal.classList.remove("flex");
-    modal.classList.add("hidden");
-
-    document.body.classList.remove(
-        "overflow-hidden"
-    );
-
-
-    selectedBatteryIndex = null;
 }
 
 
@@ -912,12 +1626,13 @@ function renderCellVoltages(cells) {
     }
 
 
-    container.innerHTML = "";
-
-
-    if (!cells.length) {
+    if (
+        !Array.isArray(cells) ||
+        cells.length === 0
+    ) {
 
         container.innerHTML = `
+
             <div class="
                 col-span-full
                 text-center
@@ -926,6 +1641,7 @@ function renderCellVoltages(cells) {
             ">
                 No cell data
             </div>
+
         `;
 
         return;
@@ -933,17 +1649,26 @@ function renderCellVoltages(cells) {
 
 
     const max =
-        Math.max(...cells);
+        Math.max(
+            ...cells
+        );
+
 
     const min =
-        Math.min(...cells);
+        Math.min(
+            ...cells
+        );
 
 
     const maxIndex =
         cells.indexOf(max);
 
+
     const minIndex =
         cells.indexOf(min);
+
+
+    let html = "";
 
 
     cells.forEach(
@@ -952,13 +1677,17 @@ function renderCellVoltages(cells) {
             let border =
                 "border-slate-700";
 
+
             let text =
                 "text-slate-200";
+
 
             let label = "";
 
 
-            if (index === maxIndex) {
+            if (
+                index === maxIndex
+            ) {
 
                 border =
                     "border-red-500";
@@ -971,10 +1700,14 @@ function renderCellVoltages(cells) {
                         text-[9px]
                         text-red-400
                     ">
+                        MAX
                     </span>
                 `;
 
-            } else if (index === minIndex) {
+            }
+            else if (
+                index === minIndex
+            ) {
 
                 border =
                     "border-yellow-500";
@@ -987,12 +1720,13 @@ function renderCellVoltages(cells) {
                         text-[9px]
                         text-yellow-400
                     ">
+                        MIN
                     </span>
                 `;
             }
 
 
-            container.innerHTML += `
+            html += `
 
                 <div class="
                     bg-[#2a3a4f]
@@ -1012,13 +1746,18 @@ function renderCellVoltages(cells) {
                         Cell ${index + 1}
                     </span>
 
+
                     <span class="
                         text-sm
                         font-bold
                         ${text}
                     ">
-                        ${num(voltage, 4)} V
+                        ${num(
+                            voltage,
+                            4
+                        )} V
                     </span>
+
 
                     ${label}
 
@@ -1027,6 +1766,10 @@ function renderCellVoltages(cells) {
             `;
         }
     );
+
+
+    container.innerHTML =
+        html;
 }
 
 
@@ -1056,27 +1799,43 @@ function renderAlarm(alarm) {
 
 
         box =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         box.id =
             "battery_alarm_box";
 
 
-        parent.appendChild(box);
+        parent.appendChild(
+            box
+        );
     }
 
 
     const critical1 =
-        Number(alarm.critical1 || 0);
+        Number(
+            alarm.critical1 || 0
+        );
+
 
     const critical2 =
-        Number(alarm.critical2 || 0);
+        Number(
+            alarm.critical2 || 0
+        );
+
 
     const major =
-        Number(alarm.major || 0);
+        Number(
+            alarm.major || 0
+        );
+
 
     const minor =
-        Number(alarm.minor || 0);
+        Number(
+            alarm.minor || 0
+        );
 
 
     const total =
@@ -1106,6 +1865,7 @@ function renderAlarm(alarm) {
                     text-green-400
                 "></i>
 
+
                 <div>
 
                     <p class="
@@ -1115,6 +1875,7 @@ function renderAlarm(alarm) {
                     ">
                         No Alarm
                     </p>
+
 
                     <p class="
                         text-slate-500
@@ -1126,6 +1887,7 @@ function renderAlarm(alarm) {
                 </div>
 
             </div>
+
         `;
 
         return;
@@ -1150,9 +1912,11 @@ function renderAlarm(alarm) {
             ">
 
                 <i class="
-                    fas fa-triangle-exclamation
+                    fas
+                    fa-triangle-exclamation
                     text-red-400
                 "></i>
+
 
                 <span class="
                     text-red-400
@@ -1173,7 +1937,9 @@ function renderAlarm(alarm) {
                 text-xs
             ">
 
+
                 <div>
+
                     <span class="text-slate-500">
                         Critical 1
                     </span>
@@ -1184,10 +1950,12 @@ function renderAlarm(alarm) {
                     ">
                         ${critical1}
                     </strong>
+
                 </div>
 
 
                 <div>
+
                     <span class="text-slate-500">
                         Critical 2
                     </span>
@@ -1198,10 +1966,12 @@ function renderAlarm(alarm) {
                     ">
                         ${critical2}
                     </strong>
+
                 </div>
 
 
                 <div>
+
                     <span class="text-slate-500">
                         Major
                     </span>
@@ -1212,10 +1982,12 @@ function renderAlarm(alarm) {
                     ">
                         ${major}
                     </strong>
+
                 </div>
 
 
                 <div>
+
                     <span class="text-slate-500">
                         Minor
                     </span>
@@ -1226,53 +1998,82 @@ function renderAlarm(alarm) {
                     ">
                         ${minor}
                     </strong>
+
                 </div>
 
             </div>
 
         </div>
+
     `;
 }
 
 
 // ======================================================
-// CLOCK
+// DETAIL BUTTON
 // ======================================================
+//
+// Event delegation.
+// Tidak hilang walaupun card diperbarui.
+//
 
-function updateClock() {
+document.addEventListener(
+    "click",
+    function(event) {
 
-    const now =
-        new Date().toLocaleTimeString(
-            "id-ID",
-            {
-                hour12: false
-            }
+        const button =
+            event.target.closest(
+                ".detail-battery-btn"
+            );
+
+
+        if (!button) {
+            return;
+        }
+
+
+        const slave =
+            button.dataset.batterySlave;
+
+
+        if (!slave) {
+            return;
+        }
+
+
+        openBatteryModal(
+            slave
         );
-
-
-    document
-        .querySelectorAll(".clock")
-        .forEach(el => {
-
-            el.innerText = now;
-
-        });
-}
-
-
-updateClock();
-
-setInterval(
-    updateClock,
-    1000
+    }
 );
 
 
 // ======================================================
-// API LOAD
+// ESC CLOSE MODAL
+// ======================================================
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape" &&
+            selectedBatterySlave !== null
+        ) {
+
+            closeBatteryModal();
+        }
+    }
+);
+
+
+// ======================================================
+// LOAD BATTERY
 // ======================================================
 
 async function loadBattery() {
+
+    // Jangan biarkan request bertumpuk
 
     if (isLoading) {
         return;
@@ -1282,13 +2083,45 @@ async function loadBattery() {
     isLoading = true;
 
 
+    // Abort request sebelumnya jika ada
+
+    if (apiController) {
+
+        try {
+            apiController.abort();
+        }
+        catch (e) {}
+
+    }
+
+
+    apiController =
+        new AbortController();
+
+
+    // Timeout 3 detik
+
+    const timeout =
+        setTimeout(
+            () => {
+                apiController.abort();
+            },
+            3000
+        );
+
+
     try {
 
         const response =
             await fetch(
-                API_URL + "?_=" + Date.now(),
+                API_URL +
+                "?_=" +
+                Date.now(),
                 {
-                    cache: "no-store"
+                    method: "GET",
+                    cache: "no-store",
+                    signal:
+                        apiController.signal
                 }
             );
 
@@ -1296,7 +2129,8 @@ async function loadBattery() {
         if (!response.ok) {
 
             throw new Error(
-                "HTTP " + response.status
+                "HTTP " +
+                response.status
             );
         }
 
@@ -1307,7 +2141,9 @@ async function loadBattery() {
 
         if (
             !data ||
-            !Array.isArray(data.battery)
+            !Array.isArray(
+                data.battery
+            )
         ) {
 
             throw new Error(
@@ -1316,210 +2152,145 @@ async function loadBattery() {
         }
 
 
-        // Simpan data
+        // ==================================================
+        // SIMPAN DATA TERBARU
+        // ==================================================
+
         batteryData =
             data.battery;
 
 
-        // Status
+        // ==================================================
+        // STATUS
+        // ==================================================
+
         setStatusOnline();
 
 
-        // Overview
-        updateOverview(data);
+        // ==================================================
+        // OVERVIEW
+        // ==================================================
 
-
-        // Battery cards
-        renderBatteryCards(
-            data.battery
+        updateOverview(
+            data
         );
 
 
-        // Jika modal sedang terbuka,
-        // update battery yang sama
+        // ==================================================
+        // CHECK STRUCTURE
+        // ==================================================
+
+        const newStructure =
+            getBatteryStructure(
+                data.battery
+            );
+
+
+        // ==================================================
+        // RENDER CARD HANYA JIKA STRUCTURE BERUBAH
+        // ==================================================
+
         if (
-            selectedBatteryIndex !== null &&
-            data.battery[selectedBatteryIndex]
+            newStructure !==
+            batteryStructure
         ) {
 
-            updateModalOnly(
-                data.battery[
-                    selectedBatteryIndex
-                ]
+            renderBatteryCards(
+                data.battery
+            );
+
+
+            batteryStructure =
+                newStructure;
+        }
+
+
+        // ==================================================
+        // UPDATE CARD SETIAP DETIK
+        // ==================================================
+
+        data.battery
+            .filter(
+                battery =>
+                    battery.online === true
+            )
+            .forEach(
+                battery => {
+
+                    updateBatteryCard(
+                        battery
+                    );
+
+                }
+            );
+
+
+        // ==================================================
+        // UPDATE MODAL
+        // ==================================================
+
+        if (
+            selectedBatterySlave !== null
+        ) {
+
+            const selectedBattery =
+                findBattery(
+                    selectedBatterySlave
+                );
+
+
+            if (
+                selectedBattery &&
+                selectedBattery.online === true
+            ) {
+
+                updateModalOnly(
+                    selectedBattery
+                );
+
+            }
+            else {
+
+                closeBatteryModal();
+
+            }
+        }
+
+    }
+    catch (error) {
+
+        if (
+            error.name ===
+            "AbortError"
+        ) {
+
+            console.warn(
+                "Battery API timeout"
+            );
+
+        }
+        else {
+
+            console.error(
+                "API Battery Error:",
+                error
             );
         }
 
 
-    } catch (error) {
-
-        console.error(
-            "API Battery Error:",
-            error
-        );
-
-
         setStatusOffline();
 
-
-    } finally {
-
-        isLoading = false;
     }
-}
+    finally {
 
-
-// ======================================================
-// UPDATE MODAL TANPA MEMBUKA ULANG
-// ======================================================
-
-function updateModalOnly(battery) {
-
-    if (!battery) {
-        return;
-    }
-
-
-    const soc =
-        Number(battery.soc || 0);
-
-
-    setText(
-        "modal_soc_battery",
-        num(soc, 0) + "%"
-    );
-
-
-    setText(
-        "modal_battery_voltage",
-        num(
-            battery.battery_voltage,
-            2
-        ) + " V"
-    );
-
-
-    setText(
-        "modal_bus_voltage",
-        num(
-            battery.battery_bus_voltage,
-            2
-        ) + " V"
-    );
-
-
-    setText(
-        "modal_min_cell_voltage",
-        num(
-            battery.min_cell,
-            3
-        ) + " V"
-    );
-
-
-    setText(
-        "modal_max_cell_voltage",
-        num(
-            battery.max_cell,
-            3
-        ) + " V"
-    );
-
-
-    setText(
-        "modal_diff_cell_voltage",
-        num(
-            battery.diff_cell,
-            0
-        ) + " mV"
-    );
-
-
-    const current =
-        Number(
-            battery.battery_current || 0
+        clearTimeout(
+            timeout
         );
 
 
-    setText(
-        "modal_battery_current",
-        num(current, 2) + " A"
-    );
-
-
-    setText(
-        "modal_bus_current",
-        num(current, 2) + " A"
-    );
-
-
-    const power =
-        getPower(battery);
-
-
-    setText(
-        "modal_bus_power",
-        num(power, 1) + " W"
-    );
-
-
-    const loss =
-        (
-            Number(
-                battery.battery_voltage || 0
-            ) -
-            Number(
-                battery.battery_bus_voltage || 0
-            )
-        ) * current;
-
-
-    setText(
-        "modal_loss_power",
-        num(loss, 1) + " W"
-    );
-
-
-    setText(
-        "modal_cycle_battery",
-        battery.discharge_times
-    );
-
-
-    setText(
-        "last_update",
-        new Date().toLocaleTimeString(
-            "id-ID",
-            {
-                hour12: false
-            }
-        )
-    );
-
-
-    const level =
-        document.getElementById(
-            "modal_battery_level"
-        );
-
-
-    if (level) {
-
-        level.style.width =
-            Math.max(
-                0,
-                Math.min(100, soc)
-            ) + "%";
+        isLoading =
+            false;
     }
-
-
-    renderCellVoltages(
-        battery.cell_voltage || []
-    );
-
-
-    renderAlarm(
-        battery.alarm_register || {}
-    );
 }
 
 
@@ -1531,6 +2302,7 @@ loadBattery();
 
 
 // Refresh API setiap 1 detik
+
 setInterval(
     loadBattery,
     1000
